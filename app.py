@@ -10,13 +10,17 @@ import pandas_gbq
 from google.oauth2 import service_account
 import os
 from dotenv import load_dotenv
+import base64
 
 app = Flask(__name__)
 CORS(app)
 load_dotenv()
 
 #Add google credentials, to use google bigquery
-credentials = service_account.Credentials.from_service_account_file(os.environ['GOOGLE_APPLICATION_CREDENTIALS'])
+credentials_64 = (os.environ['GOOGLE_APPLICATION_CREDENTIALS_BASE64'])
+credentials_json_string = base64.b64decode(credentials_64).decode('utf-8')
+credentials_json = json.loads(credentials_json_string)
+credentials = service_account.Credentials.from_service_account_info(credentials_json)
 pandas_gbq.context.credentials = credentials
 
 ### KUCOIN
