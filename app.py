@@ -7,9 +7,17 @@ from datetime import datetime, timedelta
 import pandas as pd
 from google.cloud import bigquery
 import pandas_gbq
+from google.oauth2 import service_account
+import os
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 CORS(app)
+load_dotenv()
+
+#Add google credentials, to use google bigquery
+credentials = service_account.Credentials.from_service_account_file(os.environ['GOOGLE_APPLICATION_CREDENTIALS'])
+pandas_gbq.context.credentials = credentials
 
 ### KUCOIN
 
