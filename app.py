@@ -3,7 +3,7 @@ from flask_cors import CORS
 import requests
 import json
 import time
-from datetime import datetime, timedelta
+import datetime
 import pandas as pd
 from google.cloud import bigquery
 import pandas_gbq
@@ -92,26 +92,48 @@ def get_kcs_margin_historical():
     project_id = 'data-warehouse-course-ps'
 
     sql = f"""
-    DECLARE threshold FLOAT64 DEFAULT {threshold};
-
-    WITH ranked_data AS (
-        SELECT *,
-            SUM(CAST(size AS FLOAT64)) OVER (PARTITION BY coin, timestamp ORDER BY CAST(dailyIntRate AS FLOAT64)) AS cumulative_size
+    WITH data_over_last_7_days AS (
+        SELECT 
+            coin,
+            size,
+            timestamp,
+            hrtimestamp,
+            CAST(dailyIntRate AS FLOAT64) AS dailyIntRate
         FROM `test_set.kcs_loans`
         WHERE coin = '{coin}'
-        AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 3 DAY)
+            AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
     )
-    SELECT timestamp, CAST(dailyIntRate AS FLOAT64) as dailyIntRate
-    FROM ranked_data
-    WHERE cumulative_size >= threshold
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY timestamp ORDER BY CAST(dailyIntRate AS FLOAT64)) = 1
+    SELECT *
+    FROM data_over_last_7_days
     ORDER BY timestamp;
     """
 
-    results = pandas_gbq.read_gbq(sql, project_id=project_id)
-    print(results)
+    df = pandas_gbq.read_gbq(sql, project_id=project_id)
+    df['hrtimestamp'] = df['hrtimestamp'].dt.tz_localize(None)  # Convert 'hrtimestamp' to timezone-naive object
+    timestamp = datetime.datetime.now().timestamp()
+    current_hrtimestamp = pd.to_datetime(timestamp*10**9).floor('H')
+    hrtimestamps = [current_hrtimestamp - datetime.timedelta(hours=i) for i in reversed(range(7*24-1))]
+    hrtimestamps = [ts.tz_localize(None) for ts in hrtimestamps]  # Convert list elements to timezone-naive objects
 
-    return "great success"
+    results=[]
+    print(df)
+    print(hrtimestamps)
+
+    for hrtimestamp in hrtimestamps:
+        current_df =  df[df['hrtimestamp'] == hrtimestamp]
+        print(current_df)
+        current_df_sorted = current_df.sort_values(by='dailyIntRate')
+        total=0
+        #print(current_df_sorted)
+        for index, row in current_df_sorted.iterrows():
+            total+=float(row['size'])
+            if total>threshold:
+                results.append({"timestamp":hrtimestamp, "dailyIntRate":row['dailyIntRate']})
+                break
+        if total<threshold:
+            results.append({"timestamp":hrtimestamp, "dailyIntRate":None})
+
+    return jsonify(results)
 
 ### TEST DATA
 
